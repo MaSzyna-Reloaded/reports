@@ -1,0 +1,27 @@
+name: Discord - new issue
+
+on:
+  issues:
+    types: [opened]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          TITLE: ${{ github.event.issue.title }}
+          URL: ${{ github.event.issue.html_url }}
+          NUMBER: ${{ github.event.issue.number }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+          REPO: ${{ github.repository }}
+        run: |
+          jq -n \
+            --arg title "[$REPO] #$NUMBER: $TITLE" \
+            --arg url "$URL" \
+            --arg author "$AUTHOR" \
+            '{flags: 4096, embeds: [{title: ($title[:256]), url: $url, color: 3066993, footer: {text: ("Nowe zgłoszenie od " + $author)}}]}' \
+          | curl -fsS -H 'Content-Type: application/json' -d @- "$DISCORD_WEBHOOK"
