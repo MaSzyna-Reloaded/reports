@@ -1,0 +1,16 @@
+name = "maszyna-reloaded-reports"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# owner/name of the repository the issues and the archives go to
+REPORTS_REPO = "MaSzyna-Reloaded/reports"
+
+# 5 reports a minute per address (period is 10 or 60 s)
+[[ratelimits]]
+name = "REPORT_LIMITER"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+[observability]
+enabled = true
