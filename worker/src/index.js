@@ -1,13 +1,19 @@
 // Opens a GitHub issue from a MaSzyna Reloaded problem report.
 //
-// The request is the game's report API, version API_VERSION - the contract is
-// docs/bug-reports.md in MaSzyna-API-wrapper: one multipart/form-data POST with the text fields
-// "api_version", "title", "description", "build", "scenery", "vehicle" and the file
-// "attachments" (report.zip). The zip becomes an asset of this month's release of REPORTS_REPO,
-// the issue links it, and the answer is {"issue_url": ...}.
+// The request is the game's report API, one of API_VERSIONS - the contract is docs/bug-reports.md
+// in maszyna-reloaded: one multipart/form-data POST with the text fields "api_version", "title",
+// "description", "build", "scenery", "vehicle", the file "attachments" (report.zip) and, from
+// version 2, the fields "branch", "hardware", "settings" (JSON) and the file "screenshot"
+// (screenshot.jpg, when attached). The zip and the screenshot become assets of this month's
+// release of REPORTS_REPO, the issue links the zip and shows the screenshot, and the answer is
+// {"issue_url": ...}.
 
-const API_VERSION = "1";
-const FIELDS = ["title", "description", "build", "scenery", "vehicle"];
+// 1: builds before the screenshot, the branch, the hardware and the settings were sent
+const API_VERSIONS = ["1", "2"];
+const FIELDS = ["title", "description", "build", "branch", "scenery", "vehicle"];
+// The snapshot's sections the game sends as JSON fields, shown in the issue rather than in its
+// report.json
+const JSON_FIELDS = ["hardware", "settings"];
 const GITHUB_API = "https://api.github.com";
 const GITHUB_UPLOADS = "https://uploads.github.com";
 const USER_AGENT = "maszyna-reloaded-reports";
@@ -19,8 +25,11 @@ const APP_JWT_CLOCK_DRIFT_SECONDS = 60;
 // hundred kB - docs/bug-reports.md, "Limit abuse"
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 // GitHub refuses an issue body over 65536 characters; the description goes into it twice (as
-// written and in report.json), everything else is short
+// written and in report.json), the settings' table up to MAX_SETTINGS_TABLE_CHARS, everything else
+// is short
 const MAX_DESCRIPTION_CHARS = 25000;
+const MAX_SETTINGS_TABLE_CHARS = 12000;
+const BYTES_PER_GIB = 1024 ** 3;
 const MAX_TITLE_CHARS = 256;
 const HTTP_NOT_FOUND = 404;
 // What GitHub answers when a release with the tag was created in the meantime
@@ -46,8 +55,8 @@ export default {
         } catch {
             return answer(400, { error: "not multipart/form-data" });
         }
-        if (form.get("api_version") !== API_VERSION) {
-            return answer(400, { error: `unknown api_version, expected ${API_VERSION}` });
+        if (!API_VERSIONS.includes(form.get("api_version"))) {
+            return answer(400, { error: `unknown api_version, expected one of ${API_VERSIONS.join(", ")}` });
         }
         const attachments = form.get("attachments");
         if (!(attachments instanceof File) || attachments.size === 0) {
@@ -63,19 +72,35 @@ export default {
         if (report.description.length > MAX_DESCRIPTION_CHARS) {
             report.description = report.description.slice(0, MAX_DESCRIPTION_CHARS) + "\n[... truncated]";
         }
+        // what does not parse is left out of the issue - the archive has it anyway
+        const sections = {};
+        for (const field of JSON_FIELDS) {
+            try {
+                sections[field] = JSON.parse(String(form.get(field) || "null"));
+            } catch {
+                sections[field] = null;
+            }
+        }
+        const screenshot = form.get("screenshot");
 
         try {
             const github = new GitHub(await installationToken(env), env.REPORTS_REPO);
             const release = await github.monthRelease(new Date());
-            const asset = await github.uploadAsset(release, assetName(report.build), attachments);
+            const name = assetName(report.build);
+            const assets = [await github.uploadAsset(release, `${name}.zip`, "application/zip", attachments)];
             let issue;
             try {
+                if (screenshot instanceof File && screenshot.size > 0) {
+                    assets.push(await github.uploadAsset(release, `${name}.jpg`, "image/jpeg", screenshot));
+                }
                 issue = await github.createIssue(
                     report.title.slice(0, MAX_TITLE_CHARS) || report.description.split("\n")[0],
-                    issueBody(report, asset.browser_download_url));
+                    issueBody(report, sections, assets[0].browser_download_url, assets[1]?.browser_download_url));
             } catch (error) {
-                // no zip without an issue that links it
-                await github.deleteAsset(asset);
+                // no asset without an issue that links it
+                for (const asset of assets) {
+                    await github.deleteAsset(asset);
+                }
                 throw error;
             }
             return answer(201, { issue_url: issue.html_url });
@@ -131,14 +156,14 @@ function answer(status, body) {
     });
 }
 
-// <build>_<UTC time>_<random>.zip - unique within the release
+// <build>_<UTC time>_<random> - unique within the release; the zip and the screenshot share it
 function assetName(build) {
     const safeBuild = build.replace(/[^A-Za-z0-9._-]/g, "") || "unknown";
     const time = new Date().toISOString().replace(/[:.]/g, "-");
-    return `${safeBuild}_${time}_${crypto.randomUUID().slice(0, 8)}.zip`;
+    return `${safeBuild}_${time}_${crypto.randomUUID().slice(0, 8)}`;
 }
 
-function issueBody(report, archiveUrl) {
+function issueBody(report, sections, archiveUrl, screenshotUrl) {
     // A public issue: an "@name" in what the player wrote would notify that GitHub user
     const quoted = report.description
         .replace(/@/g, "@​")
@@ -152,12 +177,16 @@ function issueBody(report, archiveUrl) {
         "",
         "| | |",
         "|---|---|",
-        `| Build | \`${report.build}\` |`,
-        `| Scenery | ${report.scenery ? `\`${report.scenery}\`` : "-"} |`,
-        `| Vehicle | ${report.vehicle ? `\`${report.vehicle}\`` : "-"} |`,
+        `| Build | ${code(report.build)} |`,
+        `| Branch | ${report.branch ? code(report.branch) : "-"} |`,
+        `| Scenery | ${report.scenery ? code(report.scenery) : "-"} |`,
+        `| Vehicle | ${report.vehicle ? code(report.vehicle) : "-"} |`,
+        ...hardwareRows(sections.hardware),
         "",
+        ...(screenshotUrl ? [`![screenshot](${screenshotUrl})`, ""] : []),
         `**Attachments:** [report.zip](${archiveUrl}) - \`snapshot.json\`, and \`screenshot.jpg\`, \`app.log\` when attached`,
         "",
+        ...settingsDetails(sections.settings),
         "<details><summary>report.json</summary>",
         "",
         `${fence}json`,
@@ -166,6 +195,72 @@ function issueBody(report, archiveUrl) {
         "",
         "</details>",
     ].join("\n");
+}
+
+// The rows of the report's table that say what the game ran on - none for a report without them
+function hardwareRows(hardware) {
+    if (!hardware || typeof hardware !== "object") {
+        return [];
+    }
+    const ram = hardware.ram && hardware.ram.physical ? [
+        gib(hardware.ram.physical),
+        hardware.ram.available > 0 && `${gib(hardware.ram.available)} available`,
+    ] : [];
+    const rows = [
+        ["OS", [hardware.distribution || hardware.os, hardware.os_version, hardware.architecture]],
+        ["CPU", [hardware.cpu, hardware.cpu_threads && `${hardware.cpu_threads} threads`]],
+        ["RAM", ram],
+        ["`user://` available disk space", [hardware.disk_space_left >= 0 && gib(hardware.disk_space_left)]],
+        ["GPU", [hardware.gpu, hardware.gpu_type]],
+        ["GPU driver", [hardware.gpu_driver]],
+        ["Rendering", [hardware.rendering_method, hardware.rendering_driver, hardware.graphics_api_version]],
+        ["Screen", [hardware.screen_size && hardware.screen_size.join("x"), hardware.window_mode]],
+        ["Godot", [hardware.godot]],
+    ];
+    return rows
+        .map(([name, parts]) => [name, parts.filter(Boolean).map(String).join(", ")])
+        .filter(([, value]) => value)
+        .map(([name, value]) => `| ${name} | ${cell(value)} |`);
+}
+
+// Bytes as GiB, one decimal
+function gib(bytes) {
+    return `${(bytes / BYTES_PER_GIB).toFixed(1)} GiB`;
+}
+
+// The player's settings as a folded table, by their names - left out when they would take more of
+// the body than MAX_SETTINGS_TABLE_CHARS
+function settingsDetails(settings) {
+    if (!settings || typeof settings !== "object") {
+        return [];
+    }
+    const table = [
+        "| Setting | Value |",
+        "|---|---|",
+        ...Object.entries(settings).map(([name, value]) => `| ${code(name)} | ${cell(JSON.stringify(value))} |`),
+    ].join("\n");
+    return [
+        "<details><summary>Settings</summary>",
+        "",
+        table.length > MAX_SETTINGS_TABLE_CHARS ? "Too many to show here - `snapshot.json` in report.zip has them." : table,
+        "",
+        "</details>",
+        "",
+    ];
+}
+
+// Text in a table's cell: no line break or "|" of its own, and no "@name" notifying a GitHub user
+function cell(text) {
+    return String(text).replace(/\r?\n/g, " ").replace(/\|/g, "\\|").replace(/@/g, "@\u200b");
+}
+
+// A text of the game's as an inline code span of a table cell: its fence longer than any run of
+// backticks in it, so the text cannot close it and write markdown - or an "@name" - of its own
+function code(text) {
+    const value = cell(text);
+    const fence = "`".repeat(longestBacktickRun(value) + 1);
+    const padding = value.startsWith("`") || value.endsWith("`") ? " " : "";
+    return `${fence}${padding}${value}${padding}${fence}`;
 }
 
 function longestBacktickRun(text) {
@@ -222,11 +317,11 @@ class GitHub {
         return this.json(created, "release create");
     }
 
-    async uploadAsset(release, name, file) {
+    async uploadAsset(release, name, contentType, file) {
         const url = `${GITHUB_UPLOADS}/repos/${this.repo}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`;
         return this.json(await this.call(url, {
             method: "POST",
-            headers: { "Content-Type": "application/zip" },
+            headers: { "Content-Type": contentType },
             // a Blob, not a stream: GitHub wants the Content-Length
             body: file,
         }), "asset upload");

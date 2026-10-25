@@ -2,10 +2,13 @@
 
 Problem reports sent from the game land here as issues (label `player-report`). Each report's
 archive (`report.zip`: `snapshot.json`, and `screenshot.jpg`, `app.log` when attached) is an asset
-of the month's release (`reports-YYYY-MM`), linked from the issue.
+of the month's release (`reports-YYYY-MM`), linked from the issue; the screenshot is an asset of
+its own as well, shown in the issue with the build's branch, the hardware and the player's
+settings.
 
 `worker/` is the endpoint the game sends to - a Cloudflare Worker. What the game sends is
-documented in MaSzyna-API-wrapper, `docs/bug-reports.md`.
+documented in maszyna-reloaded, `docs/bug-reports.md`; the Worker takes report API versions 1 and
+2.
 
 ## Deploying the Worker
 
@@ -43,9 +46,10 @@ Then send a report the game saved locally (endpoint `user://bug_reports`, on Lin
 `~/.local/share/MaSzyna-Reloaded/bug_reports/<time>/`):
 
 ```bash
-curl -F api_version=1 -F 'title=[test] a title' -F 'description=a test' -F build=test \
-     -F scenery= -F vehicle= \
+curl -F api_version=2 -F 'title=[test] a title' -F 'description=a test' -F build=test \
+     -F branch=main -F scenery= -F vehicle= -F 'hardware={}' -F 'settings={}' \
      -F 'attachments=@report.zip;type=application/zip' \
+     -F 'screenshot=@screenshot.jpg;type=image/jpeg' \
      http://localhost:8787/
 ```
 
