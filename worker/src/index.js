@@ -1,19 +1,21 @@
 // Opens a GitHub issue from a MaSzyna Reloaded problem report.
 //
-// The request is the game's report API, one of API_VERSIONS - the contract is docs/bug-reports.md
-// in maszyna-reloaded: one multipart/form-data POST with the text fields "api_version", "title",
-// "description", "build", "scenery", "vehicle", the file "attachments" (report.zip) and, from
-// version 2, the fields "branch", "hardware", "settings" (JSON) and the file "screenshot"
-// (screenshot.jpg, when attached). The zip and the screenshot become assets of this month's
-// release of REPORTS_REPO, the issue links the zip and shows the screenshot, and the answer is
-// {"issue_url": ...}.
+// The request is the game's report API - the contract is docs/bug-reports.md in maszyna-reloaded:
+// one multipart/form-data POST. Version 2: the part "report" (application/json) - "api_version",
+// "title", "description", "build", "branch", "scenery", "vehicle", and the snapshot's sections
+// "hardware" and "settings" as objects - then the file "attachments" (report.zip) and the file
+// "screenshot" (screenshot.jpg, when attached). Version 1: the text fields "api_version", "title",
+// "description", "build", "scenery", "vehicle" and the file "attachments". The zip and the
+// screenshot become assets of this month's release of REPORTS_REPO, the issue links the zip and
+// shows the screenshot, and the answer is {"issue_url": ...}.
 
-// 1: builds before the screenshot, the branch, the hardware and the settings were sent
-const API_VERSIONS = ["1", "2"];
+const API_VERSION = 2;
+// Builds before the report went as one JSON part: text fields, no screenshot, branch, hardware or
+// settings
+const API_VERSION_FIELDS = "1";
 const FIELDS = ["title", "description", "build", "branch", "scenery", "vehicle"];
-// The snapshot's sections the game sends as JSON fields, shown in the issue rather than in its
-// report.json
-const JSON_FIELDS = ["hardware", "settings"];
+// The snapshot's sections the report carries, shown in the issue rather than in its report.json
+const SECTIONS = ["hardware", "settings"];
 const GITHUB_API = "https://api.github.com";
 const GITHUB_UPLOADS = "https://uploads.github.com";
 const USER_AGENT = "maszyna-reloaded-reports";
@@ -55,8 +57,11 @@ export default {
         } catch {
             return answer(400, { error: "not multipart/form-data" });
         }
-        if (!API_VERSIONS.includes(form.get("api_version"))) {
-            return answer(400, { error: `unknown api_version, expected one of ${API_VERSIONS.join(", ")}` });
+        const sent = await sentReport(form);
+        if (!sent) {
+            return answer(400, {
+                error: `unknown api_version, expected ${API_VERSION} in the part "report" or ${API_VERSION_FIELDS}`,
+            });
         }
         const attachments = form.get("attachments");
         if (!(attachments instanceof File) || attachments.size === 0) {
@@ -64,7 +69,7 @@ export default {
         }
         const report = {};
         for (const field of FIELDS) {
-            report[field] = String(form.get(field) || "").replace(/\r\n/g, "\n").trim();
+            report[field] = String(sent[field] ?? "").replace(/\r\n/g, "\n").trim();
         }
         if (!report.description) {
             return answer(400, { error: "description empty" });
@@ -72,14 +77,10 @@ export default {
         if (report.description.length > MAX_DESCRIPTION_CHARS) {
             report.description = report.description.slice(0, MAX_DESCRIPTION_CHARS) + "\n[... truncated]";
         }
-        // what does not parse is left out of the issue - the archive has it anyway
+        // what is not an object is left out of the issue - the archive has it anyway
         const sections = {};
-        for (const field of JSON_FIELDS) {
-            try {
-                sections[field] = JSON.parse(String(form.get(field) || "null"));
-            } catch {
-                sections[field] = null;
-            }
+        for (const section of SECTIONS) {
+            sections[section] = isObject(sent[section]) ? sent[section] : null;
         }
         const screenshot = form.get("screenshot");
 
@@ -111,6 +112,30 @@ export default {
         }
     },
 };
+
+// The report's own values: the part "report" of version 2 as an object, the text fields of
+// version 1 - null for anything else. The part is text, or a file when it was sent as one
+// (curl -F report=@report.json)
+async function sentReport(form) {
+    const part = form.get("report");
+    if (part === null) {
+        // read as before version 2: each field's first value, no sections
+        return form.get("api_version") === API_VERSION_FIELDS
+            ? Object.fromEntries(FIELDS.map((field) => [field, form.get(field)]))
+            : null;
+    }
+    let report;
+    try {
+        report = JSON.parse(part instanceof File ? await part.text() : part);
+    } catch {
+        return null;
+    }
+    return isObject(report) && report.api_version === API_VERSION ? report : null;
+}
+
+function isObject(value) {
+    return value !== null && typeof value === "object" && !Array.isArray(value);
+}
 
 // A token of the GitHub App's installation on REPORTS_REPO, valid for an hour: the app signs a
 // JWT with its private key and exchanges it - the issues are then the app's ("<app>[bot]")

@@ -42,12 +42,12 @@ cd worker
 npx wrangler dev
 ```
 
-Then send a report the game saved locally (endpoint `user://bug_reports`, on Linux
+Then send a report the game saved locally, with `screenshot.jpg` taken out of its `report.zip`
+(endpoint `user://bug_reports`, on Linux
 `~/.local/share/MaSzyna-Reloaded/bug_reports/<time>/`):
 
 ```bash
-curl -F api_version=2 -F 'title=[test] a title' -F 'description=a test' -F build=test \
-     -F branch=main -F scenery= -F vehicle= -F 'hardware={}' -F 'settings={}' \
+curl -F 'report=@report.json;type=application/json' \
      -F 'attachments=@report.zip;type=application/zip' \
      -F 'screenshot=@screenshot.jpg;type=image/jpeg' \
      http://localhost:8787/
