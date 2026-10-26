@@ -1,18 +1,16 @@
 // Opens a GitHub issue from a MaSzyna Reloaded problem report.
 //
 // The request is the game's report API - the contract is docs/bug-reports.md in maszyna-reloaded:
-// one multipart/form-data POST. Version 2: the part "report" (application/json) - "api_version",
-// "title", "description", "build", "branch", "scenery", "vehicle", and the snapshot's sections
-// "hardware" and "settings" as objects - then the file "attachments" (report.zip) and the file
-// "screenshot" (screenshot.jpg, when attached). Version 1: the text fields "api_version", "title",
-// "description", "build", "scenery", "vehicle" and the file "attachments". The zip and the
+// one multipart/form-data POST, of a version read by its module in api/. The zip and the
 // screenshot become assets of this month's release of REPORTS_REPO, the issue links the zip and
 // shows the screenshot, and the answer is {"issue_url": ...}.
 
-const API_VERSION = 2;
-// Builds before the report went as one JSON part: text fields, no screenshot, branch, hardware or
-// settings
-const API_VERSION_FIELDS = "1";
+import * as v1 from "./api/v1.js";
+import * as v2 from "./api/v2.js";
+
+// Newest first: the first whose isOf takes the request reads it
+const API_VERSIONS = [v2, v1];
+// The report's values every version gives - "" for what a version does not send
 const FIELDS = ["title", "description", "build", "branch", "scenery", "vehicle"];
 // The snapshot's sections the report carries, shown in the issue rather than in its report.json
 const SECTIONS = ["hardware", "settings"];
@@ -57,13 +55,14 @@ export default {
         } catch {
             return answer(400, { error: "not multipart/form-data" });
         }
-        const sent = await sentReport(form);
-        if (!sent) {
+        const api = API_VERSIONS.find((version) => version.isOf(form));
+        const read = api && await api.read(form);
+        if (!read) {
             return answer(400, {
-                error: `unknown api_version, expected ${API_VERSION} in the part "report" or ${API_VERSION_FIELDS}`,
+                error: `unknown api_version, expected ${v2.API_VERSION} in the part "report" or ${v1.API_VERSION}`,
             });
         }
-        const attachments = form.get("attachments");
+        const { values: sent, attachments, screenshot } = read;
         if (!(attachments instanceof File) || attachments.size === 0) {
             return answer(400, { error: "attachments missing" });
         }
@@ -82,7 +81,6 @@ export default {
         for (const section of SECTIONS) {
             sections[section] = isObject(sent[section]) ? sent[section] : null;
         }
-        const screenshot = form.get("screenshot");
 
         try {
             const github = new GitHub(await installationToken(env), env.REPORTS_REPO);
@@ -112,26 +110,6 @@ export default {
         }
     },
 };
-
-// The report's own values: the part "report" of version 2 as an object, the text fields of
-// version 1 - null for anything else. The part is text, or a file when it was sent as one
-// (curl -F report=@report.json)
-async function sentReport(form) {
-    const part = form.get("report");
-    if (part === null) {
-        // read as before version 2: each field's first value, no sections
-        return form.get("api_version") === API_VERSION_FIELDS
-            ? Object.fromEntries(FIELDS.map((field) => [field, form.get(field)]))
-            : null;
-    }
-    let report;
-    try {
-        report = JSON.parse(part instanceof File ? await part.text() : part);
-    } catch {
-        return null;
-    }
-    return isObject(report) && report.api_version === API_VERSION ? report : null;
-}
 
 function isObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);

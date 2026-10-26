@@ -8,7 +8,7 @@ settings.
 
 `worker/` is the endpoint the game sends to - a Cloudflare Worker. What the game sends is
 documented in maszyna-reloaded, `docs/bug-reports.md`; the Worker takes report API versions 1 and
-2.
+2, each read by its own module in `worker/src/api/`.
 
 ## Deploying the Worker
 
