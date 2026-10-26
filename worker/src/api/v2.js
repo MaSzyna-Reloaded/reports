@@ -186,18 +186,27 @@ function settingsDetails(settings) {
     ];
 }
 
-// Text in a table's cell: no line break or "|" of its own, and no "@name" notifying a GitHub user
+// Text in a table's cell as it is: every ASCII punctuation character escaped - a "|" would end the
+// cell, a backslash escape what follows it ("\|" showing as "|", the "\\" of a setting's JSON as
+// "\"), "*", "[", "<" and the like write markdown of their own
 function cell(text) {
-    return String(text).replace(/\r?\n/g, " ").replace(/\|/g, "\\|").replace(/@/g, "@\u200b");
+    return tableText(text).replace(/[!-/:-@[-`{-~]/g, "\\$&");
 }
 
 // A text of the game's as an inline code span of a table cell: its fence longer than any run of
-// backticks in it, so the text cannot close it and write markdown - or an "@name" - of its own
+// backticks in it, so the text cannot close it and write markdown - or an "@name" - of its own.
+// A backslash in a code span is its own text: only the "|" is escaped, the table takes exactly
+// that one backslash back off
 function code(text) {
-    const value = cell(text);
+    const value = tableText(text).replace(/\|/g, "\\|");
     const fence = "`".repeat(longestBacktickRun(value) + 1);
     const padding = value.startsWith("`") || value.endsWith("`") ? " " : "";
     return `${fence}${padding}${value}${padding}${fence}`;
+}
+
+// Text for a table's cell: no line break of its own, and no "@name" notifying a GitHub user
+function tableText(text) {
+    return String(text).replace(/\r?\n/g, " ").replace(/@/g, "@​");
 }
 
 function longestBacktickRun(text) {

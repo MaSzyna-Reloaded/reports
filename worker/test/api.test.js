@@ -103,6 +103,14 @@ const CASES = {
         description: "d",
         settings: Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`group/setting_${i}`, "value ".repeat(5)])),
     }),
+    // Backslashes shown as they are: in a plain cell, in a code span, before a "|", at a cell's end
+    "v2-backslashes": () => v2Form({
+        description: "d",
+        build: "b\\",
+        scenery: "td\\x|y\\\\|z",
+        hardware: { cpu: "Ryzen \\*7\\*", gpu: "A\\|B\\\\|C", gpu_driver: "C:\\Windows\\drv.sys trail\\" },
+        settings: { "paths/scenery": "C:\\MaSzyna\\scenery", "sep\\|key": "x\\|y" },
+    }),
     "v2-github-refuses": () => v2Form({ description: "d" }, { screenshot: true }),
     "v2-wrong-version": () => v2Form(JSON.stringify({ api_version: 1, description: "d" })),
     "v2-not-json": () => v2Form("{"),
