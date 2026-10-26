@@ -8,11 +8,28 @@ settings.
 
 `worker/` is the endpoint the game sends to - a Cloudflare Worker. What the game sends is
 documented in maszyna-reloaded, `docs/bug-reports.md`; the Worker takes report API versions 1 and
-2, each read by its own module in `worker/src/api/`.
+2.
+
+Each version is a module of its own in `worker/src/api/` - its fields, checks and issue, all of
+it: a change to one version cannot change another's issues. `src/index.js` only picks the version;
+`src/shared/` is what every version uses and that knows nothing of a report (GitHub, the answer).
+A new version is a new module, put first in `API_VERSIONS`; an old one is not touched.
+
+The version a request is of is content negotiation only: a client names it in `Accept` -
+`application/vnd.maszyna-reloaded.report+json; version=2` - and gets its answer as that type and
+version; a version not offered is `406`, a request not of the version named `400`. A request that
+names none - every build of version 1 - is version 1 (with `api_version=1` or without one), and
+answered as before, `application/json`. A report of version 2 without the version in `Accept` is
+therefore refused.
+
+`npm test` (in `worker/`) sends a set of reports of every version through the Worker, GitHub
+stood in for, and compares what it answers and sends to GitHub with `worker/test/expected/`. A
+change meant to show in the issues: `UPDATE_EXPECTED=1 npm test`, then only that version's files
+in `test/expected/` may change.
 
 ## Deploying the Worker
 
-Needs Node.js 20 or newer and a free Cloudflare account.
+Needs Node.js 22 or newer (wrangler) and a free Cloudflare account.
 
 1. A GitHub App of the organisation, without a webhook, with the repository permissions
    `Contents: Read and write` (release assets) and `Issues: Read and write`, installed on this

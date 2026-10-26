@@ -1,0 +1,10 @@
+{
+  "status": 400,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "error": "attachments missing"
+  },
+  "uploads": [],
+  "deleted": [],
+  "issue": null
+}

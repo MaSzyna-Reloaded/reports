@@ -1,0 +1,24 @@
+{
+  "status": 502,
+  "contentType": "application/vnd.maszyna-reloaded.report+json; version=2; charset=utf-8",
+  "answer": {
+    "error": "the issue could not be opened"
+  },
+  "uploads": [
+    {
+      "extension": ".zip",
+      "contentType": "application/zip",
+      "size": 6
+    },
+    {
+      "extension": ".jpg",
+      "contentType": "image/jpeg",
+      "size": 4
+    }
+  ],
+  "deleted": [
+    1,
+    2
+  ],
+  "issue": null
+}

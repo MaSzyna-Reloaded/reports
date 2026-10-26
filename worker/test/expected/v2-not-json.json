@@ -1,0 +1,10 @@
+{
+  "status": 400,
+  "contentType": "application/vnd.maszyna-reloaded.report+json; version=2; charset=utf-8",
+  "answer": {
+    "error": "not a report of api version 2, which Accept names"
+  },
+  "uploads": [],
+  "deleted": [],
+  "issue": null
+}

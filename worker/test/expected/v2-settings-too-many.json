@@ -1,0 +1,22 @@
+{
+  "status": 201,
+  "contentType": "application/vnd.maszyna-reloaded.report+json; version=2; charset=utf-8",
+  "answer": {
+    "issue_url": "https://github.test/owner/reports/issues/1"
+  },
+  "uploads": [
+    {
+      "extension": ".zip",
+      "contentType": "application/zip",
+      "size": 6
+    }
+  ],
+  "deleted": [],
+  "issue": {
+    "title": "d",
+    "body": "> d\n\n| | |\n|---|---|\n| Build | `` |\n| Branch | - |\n| Scenery | - |\n| Vehicle | - |\n\n**Attachments:** [report.zip](https://download.test/asset-1.zip) - `snapshot.json`, and `screenshot.jpg`, `app.log` when attached\n\n<details><summary>Settings</summary>\n\nToo many to show here - `snapshot.json` in report.zip has them.\n\n</details>\n\n<details><summary>report.json</summary>\n\n```json\n{\n  \"title\": \"\",\n  \"description\": \"d\",\n  \"build\": \"\",\n  \"branch\": \"\",\n  \"scenery\": \"\",\n  \"vehicle\": \"\"\n}\n```\n\n</details>",
+    "labels": [
+      "player-report"
+    ]
+  }
+}

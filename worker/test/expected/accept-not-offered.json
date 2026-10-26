@@ -1,0 +1,14 @@
+{
+  "status": 406,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "error": "api version 9 not offered",
+    "offered": [
+      "application/vnd.maszyna-reloaded.report+json; version=2",
+      "application/vnd.maszyna-reloaded.report+json; version=1"
+    ]
+  },
+  "uploads": [],
+  "deleted": [],
+  "issue": null
+}
