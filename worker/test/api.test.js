@@ -13,35 +13,49 @@ import { test } from "node:test";
 const worker = (await import(process.env.WORKER_ENTRY || "../src/index.js")).default;
 const EXPECTED = new URL("./expected/", import.meta.url);
 const ENDPOINT = "https://reports.test/";
-const MEDIA_TYPE = "application/vnd.maszyna-reloaded.report+json";
+// The game's boundary: MaSzynaReport and a number
+const BOUNDARY = "MaSzynaReport1849302847";
 
-const zip = () => new File(["PK zip"], "report.zip", { type: "application/zip" });
-const jpeg = () => new File(["JPEG"], "screenshot.jpg", { type: "image/jpeg" });
-const json = (value) => new File([JSON.stringify(value)], "report.json", { type: "application/json" });
+const ZIP = "PK zip";
+const JPEG = "JPEG";
 
-function v1Form(fields, files = { attachments: zip() }) {
-    const form = new FormData();
-    form.set("api_version", "1");
-    for (const [name, value] of Object.entries({ ...fields, ...files })) {
-        form.set(name, value);
+// A part of a request: its name, its content (text or bytes), its Content-Type - none when null,
+// as curl -F sends a text field - and its filename, none when undefined
+const part = (name, content, type, filename) => ({ name, content, type, filename });
+const zip = (content = ZIP) => part("attachments", content, "application/zip", "report.zip");
+const jpeg = () => part("screenshot", JPEG, "image/jpeg", "screenshot.jpg");
+
+// The multipart/form-data request of the parts, as the game builds it (bug_report_sender.gd)
+function multipart(parts) {
+    const chunks = [];
+    for (const { name, content, type, filename } of parts) {
+        const disposition = `form-data; name="${name}"${filename === undefined ? "" : `; filename="${filename}"`}`;
+        chunks.push(`--${BOUNDARY}\r\nContent-Disposition: ${disposition}\r\n`
+            + (type === null ? "" : `Content-Type: ${type}\r\n`) + "\r\n");
+        chunks.push(content, "\r\n");
     }
-    return form;
+    chunks.push(`--${BOUNDARY}--\r\n`);
+    return { body: new Blob(chunks), contentType: `multipart/form-data; boundary=${BOUNDARY}` };
 }
 
-// A client of version 2 names it in Accept
-const ACCEPT_V2 = `${MEDIA_TYPE}; version=2`;
-
-function v2Parts(report, files = { attachments: zip() }) {
-    const form = new FormData();
-    form.set("report", json({ api_version: 2, ...report }));
-    for (const [name, value] of Object.entries(files)) {
-        form.set(name, value);
-    }
-    return form;
+// Version 1: the fields as the game sends them, text/plain - a fieldType of null as curl -F, an
+// apiVersion of null leaves the field out
+function v1Form(fields, { attachments = zip(), apiVersion = "1", fieldType = "text/plain; charset=utf-8" } = {}) {
+    const values = apiVersion === null ? fields : { api_version: apiVersion, ...fields };
+    return multipart([
+        ...Object.entries(values).map(([name, value]) => part(name, value, fieldType)),
+        ...(attachments ? [attachments] : []),
+    ]);
 }
 
-function v2Form(report, files) {
-    return { form: v2Parts(report, files), accept: ACCEPT_V2 };
+// Version 2: the part "report" as the game sends it - application/json, no filename
+function v2Form(report, { type = "application/json", filename, screenshot = false, attachments = zip() } = {}) {
+    const content = typeof report === "string" ? report : JSON.stringify({ api_version: 2, ...report });
+    return multipart([
+        part("report", content, type, filename),
+        attachments,
+        ...(screenshot ? [jpeg()] : []),
+    ]);
 }
 
 const HARDWARE = {
@@ -55,6 +69,7 @@ const HARDWARE = {
 };
 
 const CASES = {
+    // Version 1: text/plain fields
     "v1-full": () => v1Form({
         title: "Train stops at @signal",
         description: "It stopped.\r\nThen `nothing` happened, @maintainer.\r\n",
@@ -63,8 +78,15 @@ const CASES = {
         vehicle: "EU07-424",
     }),
     "v1-minimal": () => v1Form({ description: "Only this." }),
+    "v1-utf8": () => v1Form({ title: "Pociąg źle hamuje", description: "Żółć – na „stacji”." }),
+    "v1-curl": () => v1Form({ title: "From curl", description: "d" }, { fieldType: null }),
+    "v1-without-api-version": () => v1Form(
+        { title: "No version", description: "Sent without api_version.", build: "0.3" }, { apiVersion: null }),
     "v1-description-empty": () => v1Form({ title: "x", description: "  " }),
-    "v1-attachments-missing": () => v1Form({ description: "d" }, {}),
+    "v1-attachments-missing": () => v1Form({ description: "d" }, { attachments: null }),
+    "v1-github-refuses": () => v1Form({ description: "d" }),
+    "unknown-version": () => v1Form({ description: "d" }, { apiVersion: "7" }),
+    // Version 2: a part application/json
     "v2-full": () => v2Form({
         title: "Crash on load",
         description: "Crashed ```twice```.\n@someone",
@@ -74,53 +96,32 @@ const CASES = {
         vehicle: "EN57",
         hardware: HARDWARE,
         settings: { "display/vsync": true, "audio/volume": 0.8, "player|name": "a`b" },
-    }, { attachments: zip(), screenshot: jpeg() }),
+    }, { screenshot: true }),
     "v2-minimal": () => v2Form({ description: "Only this." }),
     "v2-sections-not-objects": () => v2Form({ description: "d", hardware: "fast", settings: [1, 2] }),
     "v2-settings-too-many": () => v2Form({
         description: "d",
         settings: Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`group/setting_${i}`, "value ".repeat(5)])),
     }),
-    "v2-wrong-version": () => {
-        const form = new FormData();
-        form.set("report", JSON.stringify({ api_version: 1, description: "d" }));
-        form.set("attachments", zip());
-        return { form, accept: ACCEPT_V2 };
+    "v2-github-refuses": () => v2Form({ description: "d" }, { screenshot: true }),
+    "v2-wrong-version": () => v2Form(JSON.stringify({ api_version: 1, description: "d" })),
+    "v2-not-json": () => v2Form("{"),
+    // curl -F 'report=@report.json;type=application/json'
+    "v2-curl": () => v2Form({ description: "From curl" }, { filename: "report.json" }),
+    "v2-zip-near-boundary": () => v2Form(
+        { description: "d" }, { attachments: zip(`PK\r\n--${BOUNDARY.slice(0, -1)}\r\n--\r\n\r\nzip`) }),
+    // The JSON format's version in the part's Content-Type
+    "json-version-2": () => v2Form({ description: "d" }, { type: "application/json; version=2" }),
+    "json-version-2-charset": () => v2Form({ description: "d" }, { type: "Application/JSON; charset=utf-8; Version=\"2\"" }),
+    "json-charset-only": () => v2Form({ description: "d" }, { type: "application/json; charset=utf-8" }),
+    "json-version-not-offered": () => v2Form({ api_version: 9, description: "d" }, { type: "application/json; version=9" }),
+    "json-version-1": () => v2Form({ description: "d" }, { type: "application/json; version=1" }),
+    // Not a body of parts
+    "not-multipart": () => ({ body: "{}", contentType: "application/json" }),
+    "multipart-cut": () => {
+        const { contentType } = v1Form({ description: "d" });
+        return { body: `--${BOUNDARY}\r\nContent-Disposition: form-data; name="description"\r\n\r\nd`, contentType };
     },
-    "v2-not-json": () => {
-        const form = new FormData();
-        form.set("report", "{");
-        form.set("attachments", zip());
-        return { form, accept: ACCEPT_V2 };
-    },
-    "unknown-version": () => {
-        const form = new FormData();
-        form.set("api_version", "7");
-        form.set("description", "d");
-        form.set("attachments", zip());
-        return form;
-    },
-    "v1-github-refuses": () => v1Form({ description: "d" }),
-    "v2-github-refuses": () => v2Form({ description: "d" }, { attachments: zip(), screenshot: jpeg() }),
-    "v1-without-api-version": () => {
-        const form = v1Form({ title: "No version", description: "Sent without api_version.", build: "0.3" });
-        form.delete("api_version");
-        return form;
-    },
-    // Content negotiation: the version Accept names
-    "accept-v1": () => ({ form: v1Form({ description: "d" }), accept: `${MEDIA_TYPE}; version=1` }),
-    "accept-newest": () => ({ form: v2Parts({ description: "d" }), accept: `${MEDIA_TYPE}, application/json;q=0.5` }),
-    "accept-preferred": () => ({
-        form: v1Form({ description: "d" }),
-        accept: `${MEDIA_TYPE}; version=9, ${MEDIA_TYPE}; version=2; q=0.2, ${MEDIA_TYPE}; version="1"; q=0.8`,
-    }),
-    "accept-not-offered": () => ({ form: v2Parts({ description: "d" }), accept: `${MEDIA_TYPE}; version=9` }),
-    "accept-v2-report-v1": () => ({ form: v1Form({ description: "d" }), accept: `${MEDIA_TYPE}; version=2` }),
-    "accept-v1-report-v2": () => ({ form: v2Parts({ description: "d" }), accept: `${MEDIA_TYPE}; version=1` }),
-    // No version in Accept is version 1: what a build of version 1 sends, and a report of version 2
-    // that does not name its version
-    "accept-anything": () => ({ form: v1Form({ description: "d" }), accept: "*/*" }),
-    "v2-without-accept": () => v2Parts({ description: "d" }),
 };
 
 // A key of the GitHub App's, made for the test - the stand-in does not check the JWT
@@ -182,14 +183,12 @@ async function send(name) {
     const realError = console.error;
     globalThis.fetch = github.fetch;
     console.error = () => {};
-    // a case is the form, or { form, accept } for a client that names its version
-    const made = CASES[name]();
-    const { form, accept } = made instanceof FormData ? { form: made } : made;
+    const { body, contentType } = CASES[name]();
     try {
         const response = await worker.fetch(new Request(ENDPOINT, {
             method: "POST",
-            body: form,
-            headers: accept ? { Accept: accept } : {},
+            body,
+            headers: { "Content-Type": contentType },
         }), env);
         return {
             status: response.status,

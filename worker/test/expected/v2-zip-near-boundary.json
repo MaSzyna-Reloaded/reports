@@ -1,6 +1,6 @@
 {
   "status": 201,
-  "contentType": "application/vnd.maszyna-reloaded.report+json; version=1; charset=utf-8",
+  "contentType": "application/json; charset=utf-8",
   "answer": {
     "issue_url": "https://github.test/owner/reports/issues/1"
   },
@@ -8,7 +8,7 @@
     {
       "extension": ".zip",
       "contentType": "application/zip",
-      "size": 6
+      "size": 39
     }
   ],
   "deleted": [],

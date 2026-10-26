@@ -1,8 +1,8 @@
 // Report API version 2: the part "report" (application/json) - "api_version", "title",
 // "description", "build", "branch", "scenery", "vehicle", and the snapshot's sections "hardware"
 // and "settings" as objects - then the file "attachments" (report.zip) and the file "screenshot"
-// (screenshot.jpg, when attached). A client of version 2 names it in Accept
-// (shared/negotiation.js) - a request that does not is taken as version 1.
+// (screenshot.jpg, when attached). The part "report" application/json, or application/json;
+// version=2, is what makes a request of this version (index.js, versionOf).
 //
 // The whole request, from the part to the issue, is this file's own: a change here changes no
 // other version's issues. test/api.test.js holds its issues as they are.

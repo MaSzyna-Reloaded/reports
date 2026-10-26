@@ -15,12 +15,17 @@ it: a change to one version cannot change another's issues. `src/index.js` only 
 `src/shared/` is what every version uses and that knows nothing of a report (GitHub, the answer).
 A new version is a new module, put first in `API_VERSIONS`; an old one is not touched.
 
-The version a request is of is content negotiation only: a client names it in `Accept` -
-`application/vnd.maszyna-reloaded.report+json; version=2` - and gets its answer as that type and
-version; a version not offered is `406`, a request not of the version named `400`. A request that
-names none - every build of version 1 - is version 1 (with `api_version=1` or without one), and
-answered as before, `application/json`. A report of version 2 without the version in `Accept` is
-therefore refused.
+The version a request is of is told by the `Content-Type` of its parts:
+
+| Parts | Version |
+|---|---|
+| `text/plain` fields (or fields without a `Content-Type`), no part `application/json` | 1 - the old format, with `api_version=1` or without one |
+| a part `application/json` | 2 - the JSON format |
+| a part `application/json; version=X` | X |
+
+A version not offered, or a request not of the version it is told to be, is `400`. The Worker reads
+the multipart body itself (`src/shared/multipart.js`): `request.formData()` drops the
+`Content-Type` of a part without a filename, and the game's part `report` has none.
 
 `npm test` (in `worker/`) sends a set of reports of every version through the Worker, GitHub
 stood in for, and compares what it answers and sends to GitHub with `worker/test/expected/`. A

@@ -2,7 +2,7 @@
   "status": 400,
   "contentType": "application/json; charset=utf-8",
   "answer": {
-    "error": "unknown api_version, expected 1 - or a version named in Accept: application/vnd.maszyna-reloaded.report+json; version=<n>"
+    "error": "not a report of api version 1 - its text fields with api_version 1"
   },
   "uploads": [],
   "deleted": [],

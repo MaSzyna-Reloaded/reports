@@ -1,0 +1,10 @@
+{
+  "status": 400,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "error": "not multipart/form-data"
+  },
+  "uploads": [],
+  "deleted": [],
+  "issue": null
+}

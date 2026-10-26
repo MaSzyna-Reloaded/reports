@@ -1,6 +1,6 @@
 {
   "status": 502,
-  "contentType": "application/vnd.maszyna-reloaded.report+json; version=2; charset=utf-8",
+  "contentType": "application/json; charset=utf-8",
   "answer": {
     "error": "the issue could not be opened"
   },

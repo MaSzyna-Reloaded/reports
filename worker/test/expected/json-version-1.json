@@ -1,0 +1,10 @@
+{
+  "status": 400,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "error": "not a report of api version 1 - its text fields with api_version 1"
+  },
+  "uploads": [],
+  "deleted": [],
+  "issue": null
+}

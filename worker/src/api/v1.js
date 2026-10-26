@@ -1,7 +1,7 @@
 // Report API version 1 - builds before the report went as one JSON part: the text fields
 // "api_version", "title", "description", "build", "scenery", "vehicle" and the file "attachments"
-// (report.zip). No screenshot, branch, hardware or settings. Its builds name no version in Accept:
-// a request that names none is taken as this one.
+// (report.zip). No screenshot, branch, hardware or settings. Its fields are text/plain parts: a
+// request without a part application/json is of this version (index.js, versionOf).
 //
 // Frozen: the builds that send it are out, so nothing here changes with a newer version - the
 // whole request, from the fields to the issue, is this file's own. test/api.test.js holds its
