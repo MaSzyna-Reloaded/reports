@@ -1,0 +1,22 @@
+{
+  "status": 201,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "issue_url": "https://github.test/owner/reports/issues/1"
+  },
+  "uploads": [
+    {
+      "extension": ".zip",
+      "contentType": "application/zip",
+      "size": 6
+    }
+  ],
+  "deleted": [],
+  "issue": {
+    "title": "Train stops at @signal",
+    "body": "> It stopped.\n> Then `nothing` happened, @​maintainer.\n\n| | |\n|---|---|\n| Build | `0.4.2+abc 1` |\n| Branch | - |\n| Scenery | `` td.scn \\| `x` `` |\n| Vehicle | `EU07-424` |\n\n**Attachments:** [report.zip](https://download.test/asset-1.zip) - `snapshot.json`, and `screenshot.jpg`, `app.log` when attached\n\n<details><summary>report.json</summary>\n\n```json\n{\n  \"title\": \"Train stops at @signal\",\n  \"description\": \"It stopped.\\nThen `nothing` happened, @maintainer.\",\n  \"build\": \"0.4.2+abc 1\",\n  \"branch\": \"\",\n  \"scenery\": \"td.scn | `x`\",\n  \"vehicle\": \"EU07-424\"\n}\n```\n\n</details>",
+    "labels": [
+      "player-report"
+    ]
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "status": 201,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "issue_url": "https://github.test/owner/reports/issues/1"
+  },
+  "uploads": [
+    {
+      "extension": ".zip",
+      "contentType": "application/zip",
+      "size": 6
+    },
+    {
+      "extension": ".jpg",
+      "contentType": "image/jpeg",
+      "size": 4
+    }
+  ],
+  "deleted": [],
+  "issue": {
+    "title": "Crash on load",
+    "body": "> Crashed ```twice```.\n> @​someone\n\n| | |\n|---|---|\n| Build | `0.5.0` |\n| Branch | `dev/bug-report-hardware` |\n| Scenery | `td.scn` |\n| Vehicle | `EN57` |\n| OS | Fedora Linux 44\\, 6\\.17\\, x86\\_64 |\n| CPU | AMD Ryzen 7 5800X\\, 16 threads |\n| RAM | 32\\.0 GiB\\, 16\\.0 GiB available |\n| `user://` available disk space | 100\\.0 GiB |\n| GPU | Radeon RX 6800 \\| \\@​team\\, discrete |\n| GPU driver | Mesa 25\\.2 |\n| Rendering | forward\\_plus\\, vulkan\\, 1\\.4 |\n| Screen | 2560x1440\\, fullscreen |\n| Godot | 4\\.5\\.1\\.stable |\n\n![screenshot](https://download.test/asset-2.jpg)\n\n**Attachments:** [report.zip](https://download.test/asset-1.zip) - `snapshot.json`, and `screenshot.jpg`, `app.log` when attached\n\n<details><summary>Settings</summary>\n\n| Setting | Value |\n|---|---|\n| `display/vsync` | true |\n| `audio/volume` | 0\\.8 |\n| `player\\|name` | \\\"a\\`b\\\" |\n\n</details>\n\n<details><summary>report.json</summary>\n\n````json\n{\n  \"title\": \"Crash on load\",\n  \"description\": \"Crashed ```twice```.\\n@someone\",\n  \"build\": \"0.5.0\",\n  \"branch\": \"dev/bug-report-hardware\",\n  \"scenery\": \"td.scn\",\n  \"vehicle\": \"EN57\"\n}\n````\n\n</details>",
+    "labels": [
+      "player-report"
+    ]
+  }
+}

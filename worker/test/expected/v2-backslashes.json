@@ -1,0 +1,22 @@
+{
+  "status": 201,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "issue_url": "https://github.test/owner/reports/issues/1"
+  },
+  "uploads": [
+    {
+      "extension": ".zip",
+      "contentType": "application/zip",
+      "size": 6
+    }
+  ],
+  "deleted": [],
+  "issue": {
+    "title": "d",
+    "body": "> d\n\n| | |\n|---|---|\n| Build | `b\\` |\n| Branch | - |\n| Scenery | `td\\x\\|y\\\\\\|z` |\n| Vehicle | - |\n| CPU | Ryzen \\\\\\*7\\\\\\* |\n| GPU | A\\\\\\|B\\\\\\\\\\|C |\n| GPU driver | C\\:\\\\Windows\\\\drv\\.sys trail\\\\ |\n\n**Attachments:** [report.zip](https://download.test/asset-1.zip) - `snapshot.json`, and `screenshot.jpg`, `app.log` when attached\n\n<details><summary>Settings</summary>\n\n| Setting | Value |\n|---|---|\n| `paths/scenery` | \\\"C\\:\\\\\\\\MaSzyna\\\\\\\\scenery\\\" |\n| `sep\\\\|key` | \\\"x\\\\\\\\\\|y\\\" |\n\n</details>\n\n<details><summary>report.json</summary>\n\n```json\n{\n  \"title\": \"\",\n  \"description\": \"d\",\n  \"build\": \"b\\\\\",\n  \"branch\": \"\",\n  \"scenery\": \"td\\\\x|y\\\\\\\\|z\",\n  \"vehicle\": \"\"\n}\n```\n\n</details>",
+    "labels": [
+      "player-report"
+    ]
+  }
+}

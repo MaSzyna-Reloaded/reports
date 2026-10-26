@@ -1,0 +1,18 @@
+{
+  "status": 502,
+  "contentType": "application/json; charset=utf-8",
+  "answer": {
+    "error": "the issue could not be opened"
+  },
+  "uploads": [
+    {
+      "extension": ".zip",
+      "contentType": "application/zip",
+      "size": 6
+    }
+  ],
+  "deleted": [
+    1
+  ],
+  "issue": null
+}
