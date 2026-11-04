@@ -1,13 +1,26 @@
 // Opens a GitHub issue from a MaSzyna Reloaded problem report.
 //
-// The request is the game's report API, version API_VERSION - the contract is
-// docs/bug-reports.md in MaSzyna-API-wrapper: one multipart/form-data POST with the text fields
-// "api_version", "title", "description", "build", "scenery", "vehicle" and the file
-// "attachments" (report.zip). The zip becomes an asset of this month's release of REPORTS_REPO,
-// the issue links it, and the answer is {"issue_url": ...}.
+// The request is the game's report - the contract is docs/bug-reports.md in maszyna-reloaded: one
+// multipart/form-data POST whose parts are told apart by their name and read by their Content-Type.
+// There is no API version: a part a build does not send is left out of the issue, a part the
+// Worker does not know is ignored, so every build's report is taken.
+//   text/plain        "title", "description", "build", "branch", "scenery", "vehicle" (the old
+//                     builds' "api_version" is ignored); a public release is named by its tag
+//                     in "build" alone, with no "branch"
+//   application/json  "hardware", "settings" - objects, shown in the issue; sent as files
+//                     (filename="hardware.json"), as request.formData() keeps a part's
+//                     Content-Type only then
+//   application/zip   "attachments" (report.zip) - required
+//   image/jpeg        "screenshot", when attached
+// The zip and the screenshot become assets of this month's release of REPORTS_REPO, the issue links
+// the zip and shows the screenshot, and the answer is {"issue_url": ...}.
 
-const API_VERSION = "1";
-const FIELDS = ["title", "description", "build", "scenery", "vehicle"];
+const FIELDS = ["title", "description", "build", "branch", "scenery", "vehicle"];
+// The JSON parts, objects - anything else in them is left out of the issue; the archive has it
+const JSON_PARTS = ["hardware", "settings"];
+const JSON_TYPE = "application/json";
+// The screenshot's types, by the asset's extension
+const SCREENSHOT_TYPES = { "image/jpeg": "jpg", "image/png": "png" };
 const GITHUB_API = "https://api.github.com";
 const GITHUB_UPLOADS = "https://uploads.github.com";
 const USER_AGENT = "maszyna-reloaded-reports";
@@ -19,9 +32,12 @@ const APP_JWT_CLOCK_DRIFT_SECONDS = 60;
 // hundred kB - docs/bug-reports.md, "Limit abuse"
 const MAX_REQUEST_BYTES = 25 * 1024 * 1024;
 // GitHub refuses an issue body over 65536 characters; the description goes into it twice (as
-// written and in report.json), everything else is short
+// written and in report.json), the settings' table up to MAX_SETTINGS_TABLE_CHARS, everything else
+// is short
 const MAX_DESCRIPTION_CHARS = 25000;
+const MAX_SETTINGS_TABLE_CHARS = 12000;
 const MAX_TITLE_CHARS = 256;
+const BYTES_PER_GIB = 1024 ** 3;
 const HTTP_NOT_FOUND = 404;
 // What GitHub answers when a release with the tag was created in the meantime
 const HTTP_UNPROCESSABLE = 422;
@@ -46,16 +62,13 @@ export default {
         } catch {
             return answer(400, { error: "not multipart/form-data" });
         }
-        if (form.get("api_version") !== API_VERSION) {
-            return answer(400, { error: `unknown api_version, expected ${API_VERSION}` });
-        }
         const attachments = form.get("attachments");
         if (!(attachments instanceof File) || attachments.size === 0) {
             return answer(400, { error: "attachments missing" });
         }
         const report = {};
         for (const field of FIELDS) {
-            report[field] = String(form.get(field) || "").replace(/\r\n/g, "\n").trim();
+            report[field] = await text(form.get(field));
         }
         if (!report.description) {
             return answer(400, { error: "description empty" });
@@ -63,19 +76,34 @@ export default {
         if (report.description.length > MAX_DESCRIPTION_CHARS) {
             report.description = report.description.slice(0, MAX_DESCRIPTION_CHARS) + "\n[... truncated]";
         }
+        const sections = {};
+        for (const name of JSON_PARTS) {
+            sections[name] = await jsonObject(form.get(name));
+        }
+        const screenshot = form.get("screenshot");
+        const screenshotExtension = screenshot instanceof File && screenshot.size > 0
+            ? SCREENSHOT_TYPES[mediaType(screenshot.type)]
+            : undefined;
 
         try {
             const github = new GitHub(await installationToken(env), env.REPORTS_REPO);
             const release = await github.monthRelease(new Date());
-            const asset = await github.uploadAsset(release, assetName(report.build), attachments);
+            const name = assetName(report.build);
+            const assets = [await github.uploadAsset(release, `${name}.zip`, "application/zip", attachments)];
             let issue;
             try {
+                if (screenshotExtension) {
+                    assets.push(await github.uploadAsset(
+                        release, `${name}.${screenshotExtension}`, mediaType(screenshot.type), screenshot));
+                }
                 issue = await github.createIssue(
                     report.title.slice(0, MAX_TITLE_CHARS) || report.description.split("\n")[0],
-                    issueBody(report, asset.browser_download_url));
+                    issueBody(report, sections, assets[0].browser_download_url, assets[1]?.browser_download_url));
             } catch (error) {
-                // no zip without an issue that links it
-                await github.deleteAsset(asset);
+                // no asset without an issue that links it
+                for (const asset of assets) {
+                    await github.deleteAsset(asset);
+                }
                 throw error;
             }
             return answer(201, { issue_url: issue.html_url });
@@ -86,6 +114,31 @@ export default {
         }
     },
 };
+
+// A text part as text - a file's content too (curl -F title=@title.txt) -, "" when it is missing
+async function text(part) {
+    const value = part instanceof File ? await part.text() : (part ?? "");
+    return String(value).replace(/\r\n/g, "\n").trim();
+}
+
+// A JSON part as an object - null when it is missing, not of JSON_TYPE or not a JSON object
+async function jsonObject(part) {
+    if (!(part instanceof File) || mediaType(part.type) !== JSON_TYPE) {
+        return null;
+    }
+    try {
+        const value = JSON.parse(await part.text());
+        return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+    } catch {
+        return null;
+    }
+}
+
+// A Content-Type without its parameters, lowercase: "application/json; charset=utf-8" is
+// "application/json"
+function mediaType(contentType) {
+    return String(contentType).split(";")[0].trim().toLowerCase();
+}
 
 // A token of the GitHub App's installation on REPORTS_REPO, valid for an hour: the app signs a
 // JWT with its private key and exchanges it - the issues are then the app's ("<app>[bot]")
@@ -131,14 +184,14 @@ function answer(status, body) {
     });
 }
 
-// <build>_<UTC time>_<random>.zip - unique within the release
+// <build>_<UTC time>_<random> - unique within the release; a report's assets share it
 function assetName(build) {
     const safeBuild = build.replace(/[^A-Za-z0-9._-]/g, "") || "unknown";
     const time = new Date().toISOString().replace(/[:.]/g, "-");
-    return `${safeBuild}_${time}_${crypto.randomUUID().slice(0, 8)}.zip`;
+    return `${safeBuild}_${time}_${crypto.randomUUID().slice(0, 8)}`;
 }
 
-function issueBody(report, archiveUrl) {
+function issueBody(report, sections, archiveUrl, screenshotUrl) {
     // A public issue: an "@name" in what the player wrote would notify that GitHub user
     const quoted = report.description
         .replace(/@/g, "@​")
@@ -152,12 +205,16 @@ function issueBody(report, archiveUrl) {
         "",
         "| | |",
         "|---|---|",
-        `| Build | \`${report.build}\` |`,
-        `| Scenery | ${report.scenery ? `\`${report.scenery}\`` : "-"} |`,
-        `| Vehicle | ${report.vehicle ? `\`${report.vehicle}\`` : "-"} |`,
+        `| Build | ${code(report.build)} |`,
+        ...(report.branch ? [`| Branch | ${code(report.branch)} |`] : []),
+        `| Scenery | ${report.scenery ? code(report.scenery) : "-"} |`,
+        `| Vehicle | ${report.vehicle ? code(report.vehicle) : "-"} |`,
+        ...hardwareRows(sections.hardware),
         "",
+        ...(screenshotUrl ? [`![screenshot](${screenshotUrl})`, ""] : []),
         `**Attachments:** [report.zip](${archiveUrl}) - \`snapshot.json\`, and \`screenshot.jpg\`, \`app.log\` when attached`,
         "",
+        ...settingsDetails(sections.settings),
         "<details><summary>report.json</summary>",
         "",
         `${fence}json`,
@@ -166,6 +223,74 @@ function issueBody(report, archiveUrl) {
         "",
         "</details>",
     ].join("\n");
+}
+
+// The rows of the report's table that say what the game ran on - none for a report without them
+function hardwareRows(hardware) {
+    if (!hardware) {
+        return [];
+    }
+    const ram = hardware.ram && hardware.ram.physical ? [
+        gib(hardware.ram.physical),
+        hardware.ram.available > 0 && `${gib(hardware.ram.available)} available`,
+    ] : [];
+    const rows = [
+        ["OS", [hardware.distribution || hardware.os, hardware.os_version, hardware.architecture]],
+        ["CPU", [hardware.cpu, hardware.cpu_threads && `${hardware.cpu_threads} threads`]],
+        ["RAM", ram],
+        ["<code>user://</code> available disk space", [hardware.disk_space_left >= 0 && gib(hardware.disk_space_left)]],
+        ["GPU", [hardware.gpu, hardware.gpu_type]],
+        ["GPU driver", [hardware.gpu_driver]],
+        ["Rendering", [hardware.rendering_method, hardware.rendering_driver, hardware.graphics_api_version]],
+        ["Screen", [Array.isArray(hardware.screen_size) && hardware.screen_size.join("x"), hardware.window_mode]],
+        ["Godot", [hardware.godot]],
+    ];
+    return rows
+        .map(([name, parts]) => [name, parts.filter(Boolean).map(String).join(", ")])
+        .filter(([, value]) => value)
+        .map(([name, value]) => `| ${name} | ${cell(value)} |`);
+}
+
+// Bytes as GiB, one decimal
+function gib(bytes) {
+    return `${(Number(bytes) / BYTES_PER_GIB).toFixed(1)} GiB`;
+}
+
+// The player's settings as a folded table, by their names - left out when they would take more of
+// the body than MAX_SETTINGS_TABLE_CHARS
+function settingsDetails(settings) {
+    if (!settings) {
+        return [];
+    }
+    const table = [
+        "| Setting | Value |",
+        "|---|---|",
+        ...Object.entries(settings).map(([name, value]) => `| ${code(name)} | ${cell(JSON.stringify(value))} |`),
+    ].join("\n");
+    return [
+        "<details><summary>Settings</summary>",
+        "",
+        table.length > MAX_SETTINGS_TABLE_CHARS ? "Too many to show here - `snapshot.json` in report.zip has them." : table,
+        "",
+        "</details>",
+        "",
+    ];
+}
+
+// A text of the game's in a table's cell, shown as it is: every ASCII punctuation character
+// backslash-escaped - the backslash itself as well, so a "\" before a "|" cannot unescape it and
+// end the cell -, no line break of its own, and no "@name" notifying a GitHub user
+function cell(text) {
+    return String(text)
+        .replace(/\r?\n/g, " ")
+        .replace(/[!-/:-@[-`{-~]/g, "\\$&")
+        .replace(/@/g, "@​");
+}
+
+// The same text in monospace: <code> rather than a code span, whose backslashes are its own text -
+// in it the escapes of cell() would show; between the tags they are read as escapes
+function code(text) {
+    return `<code>${cell(text)}</code>`;
 }
 
 function longestBacktickRun(text) {
@@ -222,11 +347,11 @@ class GitHub {
         return this.json(created, "release create");
     }
 
-    async uploadAsset(release, name, file) {
+    async uploadAsset(release, name, contentType, file) {
         const url = `${GITHUB_UPLOADS}/repos/${this.repo}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`;
         return this.json(await this.call(url, {
             method: "POST",
-            headers: { "Content-Type": "application/zip" },
+            headers: { "Content-Type": contentType },
             // a Blob, not a stream: GitHub wants the Content-Length
             body: file,
         }), "asset upload");
